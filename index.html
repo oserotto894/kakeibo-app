@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
+<title>カード家計簿</title>
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="家計簿" />
+<meta name="theme-color" content="#0f172a" />
+<link rel="apple-touch-icon" href="icons/icon-180.png" />
+<link rel="manifest" href="manifest.json" />
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<header class="app-header">
+  <h1>カード家計簿</h1>
+  <div class="sync-status" id="syncStatus">未同期</div>
+</header>
+
+<main>
+  <section class="tab active" id="tab-home">
+    <div class="total-card">
+      <div class="label">未精算合計(振込前)</div>
+      <div class="amount"><span class="yen">¥</span><span id="totalAmount">0</span></div>
+      <div class="breakdown" id="breakdown"></div>
+    </div>
+
+    <div class="action-row">
+      <button class="secondary" id="btnSync">Gmail同期</button>
+      <button class="primary" id="btnRefresh">Refresh(振込完了)</button>
+    </div>
+
+    <h2 class="section-title">手動で追加(メール通知が来ないカードなど)</h2>
+    <div class="form-block">
+      <label>金額</label>
+      <input type="number" id="manualAmount" min="1" placeholder="例: 1200" inputmode="numeric" />
+
+      <label>カード名・メモ(任意)</label>
+      <input type="text" id="manualLabel" placeholder="例: 楽天銀行デビット" />
+
+      <div class="action-row" style="margin-top:10px;">
+        <button class="primary" id="btnManualAdd" type="button">未精算合計に追加</button>
+      </div>
+    </div>
+
+    <h2 class="section-title">未精算の利用履歴</h2>
+    <div class="tx-list" id="txList"></div>
+  </section>
+
+  <section class="tab" id="tab-cards">
+    <h2 class="section-title">登録カード</h2>
+    <div class="card-list" id="cardList"></div>
+
+    <h2 class="section-title">カードを追加</h2>
+    <div class="form-block">
+      <label>カード名</label>
+      <input type="text" id="newCardName" placeholder="例: 楽天カード" />
+
+      <label>Gmail検索クエリ(このカードの利用通知メールを絞り込む条件)</label>
+      <input type="text" id="newCardQuery" placeholder="例: from:rakuten-card@rakuten-card.co.jp" />
+
+      <label>金額抽出用の正規表現(丸括弧の中に金額の数字だけを捉えてください)</label>
+      <input type="text" id="newCardRegex" placeholder="例: ご利用金額[^0-9]*([0-9,]+)\s*円" />
+
+      <label>テスト用メール本文(実際のメールをコピー&ペースト)</label>
+      <textarea id="testBody" placeholder="Gmailで実際に届いたメールの本文を貼り付けてテストできます"></textarea>
+      <div class="action-row" style="margin-top:8px;margin-bottom:0;">
+        <button class="secondary small" id="btnTestRegex" type="button">抽出テスト</button>
+      </div>
+      <div id="testResult"></div>
+
+      <div class="action-row" style="margin-top:14px;">
+        <button class="primary" id="btnAddCard" type="button">カードを追加</button>
+      </div>
+      <div class="action-row">
+        <button class="danger-outline" id="btnCancelEdit" type="button" style="flex:1;display:none;">編集をキャンセル</button>
+      </div>
+    </div>
+
+    <p class="hint" style="margin-top:16px;">
+      メール本文の書式はカード会社ごと・時期によって異なります。追加前に必ず「抽出テスト」で正しい金額が取れるか確認してください。
+    </p>
+  </section>
+
+  <section class="tab" id="tab-history">
+    <h2 class="section-title">精算履歴(振込した記録)</h2>
+    <div class="settlement-list" id="settlementList"></div>
+
+    <h2 class="section-title">全取引ログ</h2>
+    <div class="tx-list" id="allTxList"></div>
+  </section>
+
+  <section class="tab" id="tab-settings">
+    <h2 class="section-title">Gmail連携</h2>
+    <div class="form-block">
+      <div id="signInStatus" class="status-pill off">未接続</div>
+
+      <label>Google OAuth クライアントID</label>
+      <input type="text" id="clientIdInput" placeholder="xxxxxxxx.apps.googleusercontent.com" />
+      <p class="hint">Google Cloud Console で発行した「ウェブアプリケーション」用クライアントIDを入力してください(手順はREADME参照)。</p>
+
+      <div class="action-row" style="margin-top:10px;">
+        <button class="secondary" id="btnSaveClientId" type="button">保存</button>
+        <button class="primary" id="btnSignIn" type="button">Googleでサインイン</button>
+      </div>
+      <div class="action-row">
+        <button class="danger-outline" id="btnSignOut" type="button" style="flex:1;">サインアウト</button>
+      </div>
+    </div>
+
+    <h2 class="section-title">同期設定</h2>
+    <div class="form-block">
+      <label>検索対象期間(日数)</label>
+      <input type="number" id="searchDaysInput" min="1" max="365" />
+      <p class="hint">この日数より新しいメールだけを検索します。重複は自動でスキップされるので、少し長めでも問題ありません。</p>
+      <div class="action-row" style="margin-top:10px;">
+        <button class="secondary" id="btnSaveSearchDays" type="button">保存</button>
+      </div>
+    </div>
+
+    <h2 class="section-title">デバッグ(未マッチだったメール本文)</h2>
+    <div class="form-block">
+      <p class="hint">直近の同期で正規表現にマッチしなかったメールの、実際に取得された本文(先頭部分)がここに表示されます。正規表現の調整に使ってください。</p>
+      <div id="debugSamples"></div>
+    </div>
+
+    <h2 class="section-title">データ</h2>
+    <div class="form-block">
+      <p class="hint">すべてのデータはこの端末のブラウザ内(localStorage)にのみ保存され、外部サーバーには送信されません。</p>
+      <div class="action-row" style="margin-top:10px;">
+        <button class="danger-outline" id="btnResetAll" type="button" style="flex:1;">全データを削除</button>
+      </div>
+    </div>
+  </section>
+</main>
+
+<nav class="tabbar">
+  <button class="tab-btn active" data-tab="home"><span class="icon">🏠</span>ホーム</button>
+  <button class="tab-btn" data-tab="cards"><span class="icon">💳</span>カード</button>
+  <button class="tab-btn" data-tab="history"><span class="icon">🗂️</span>履歴</button>
+  <button class="tab-btn" data-tab="settings"><span class="icon">⚙️</span>設定</button>
+</nav>
+
+<div id="toast" class="toast" style="display:none;"></div>
+
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="storage.js"></script>
+<script src="gmail.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
